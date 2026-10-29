@@ -1,0 +1,18 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Markdown converter harness</title>
+<style>
+  body { font: 14px -apple-system, sans-serif; margin: 24px; }
+  .ae-editable { border: 1px solid #999; padding: 8px; min-height: 200px; }
+  pre { background: #eee; }
+</style>
+</head>
+<body>
+<p>Mimics IT Glue's <code>.ae-editable</code> editor. The pre-existing lines below must survive editing other lines.</p>
+<div class="ae-editable" contenteditable="true" id="ed"><div>Existing: com_apple_mdm and Jamf_Pro_Policy_v2 and **literal**</div><div>Existing link: <a href="https://example.com/a_b_c">a_b_c</a></div><div><br></div></div>
+<button id="other">Something else to focus</button>
+<script src="../userscript.js"></script>
+</body>
+</html>

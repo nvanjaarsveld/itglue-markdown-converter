@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "ITGlue Markdown Converter (patched)",
+  "version": "1.1.2",
+  "description": "Convert markdown to HTML with bold, italic, underline, code, and more in IT Glue. Patched build of the Edge add-on v1.1.",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.itglue.com/*"
+      ],
+      "js": [
+        "userscript.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "ITGlue Markdown Converter (patched)"
+  },
+  "icons": {
+    "16": "Icon-16.png",
+    "32": "Icon-32.png",
+    "48": "Icon-48.png",
+    "128": "Icon-128.png"
+  }
+}
