@@ -33,9 +33,12 @@ After changing `userscript.js`, click the reload icon on the extension card.
 | `__text__` | Underline (not bold, unlike standard markdown) |
 | `~~text~~` | Strikethrough |
 | `[label](https://…)` | Link (http/https only, opens in new tab) |
+| `\| a \| b \|` + `\|---\|---\|` + rows | Table (header row, `:--`/`:-:`/`--:` alignment, inline markdown in cells, `\\|` for a literal pipe) |
 
 A line converts when the caret leaves it (Enter, arrow keys, clicking elsewhere) or when the
-editor loses focus. Escape something from conversion by wrapping it in backticks.
+editor loses focus. Tables work both when pasted (rows arrive as `<br>`-separated lines in one
+paragraph) and when typed row by row. A table ends at the first line without a `|`, so text
+directly under it stays a paragraph (stricter than GFM, which would make it a row). Escape something from conversion by wrapping it in backticks.
 
 ## Changes from the original 1.1
 
@@ -56,7 +59,9 @@ Edge `update_url`. Icons are unchanged from the original.
 
 ## Known limitations
 
-- No lists (`- item`, `1. item`), no `####`+ headings, no tables — same as the original.
+- No lists (`- item`, `1. item`), no `####`+ headings — same as the original.
+- Pasted headings, quotes and code fences only convert when they land in their own paragraph
+  (blank line around them in the source); tables are also detected inside a pasted paragraph.
 - `__init__`-style dunder names become underlined; wrap them in backticks.
 - Single `*`/`_` emphasis needs a letter or digit right inside the markers, so `*"quoted"*` or
   `*Note:*` stay literal (`**Note:**` works).

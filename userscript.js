@@ -157,6 +157,151 @@
     }
 
     // ---------------------------------------------------------------------------------------
+    // Tables (GitHub-flavoured: header row, separator row, body rows)
+    // ---------------------------------------------------------------------------------------
+
+    // Unescaped pipe; "\|" is a literal pipe inside a cell.
+    const PIPE_RE = /(?<!\\)\|/;
+    // "|---|:--:|--:|" — at least one pipe, so a lone "---" is never taken for a separator.
+    const TABLE_SEPARATOR_RE = /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$/;
+
+    function splitTableRow(text) {
+        let row = text.trim();
+        if (row.startsWith('|')) row = row.slice(1);
+        if (/(?<!\\)\|$/.test(row)) row = row.slice(0, -1);
+        return row.split(PIPE_RE).map(cell => cell.trim().replace(/\\\|/g, '|'));
+    }
+
+    // Finds tables in a list of line texts. Returns [{ start, end, align }] with end inclusive.
+    // A table is a line with a pipe, followed by a separator row with the same number of
+    // columns, followed by every next line that still contains a pipe. Unlike strict GFM a
+    // pipe-less line ends the table, so a paragraph pasted directly under it isn't swallowed.
+    function findTables(texts) {
+        const tables = [];
+        for (let i = 0; i + 1 < texts.length; i++) {
+            const header = texts[i].trim();
+            const separator = texts[i + 1].trim();
+            if (!PIPE_RE.test(header) || !separator.includes('|')) continue;
+            if (!TABLE_SEPARATOR_RE.test(separator)) continue;
+
+            const columns = splitTableRow(header).length;
+            const align = splitTableRow(separator).map(cell => {
+                const left = cell.startsWith(':');
+                const right = cell.endsWith(':');
+                if (left && right) return 'center';
+                if (right) return 'right';
+                return left ? 'left' : null;
+            });
+            if (align.length !== columns) continue;
+
+            let end = i + 1;
+            while (end + 1 < texts.length && PIPE_RE.test(texts[end + 1].trim())) end++;
+            tables.push({ start: i, end, align });
+            i = end;
+        }
+        return tables;
+    }
+
+    function buildTableCell(tag, text, align) {
+        const cell = document.createElement(tag);
+        if (align) cell.style.textAlign = align;
+        const html = inlineMarkdownToHtml(text);
+        if (html === null) {
+            cell.textContent = text;
+        } else {
+            const template = document.createElement('template');
+            template.innerHTML = html;
+            cell.append(template.content);
+        }
+        return cell;
+    }
+
+    // Builds a <table> from the row texts of one table found by findTables. Rows with too
+    // few cells are padded and extra cells dropped, as in GFM.
+    function buildTable(rowTexts, align) {
+        const table = document.createElement('table');
+        // Same attributes CKEditor's own table dialog uses, so IT Glue keeps and borders them.
+        table.setAttribute('border', '1');
+        table.setAttribute('cellpadding', '4');
+        table.setAttribute('cellspacing', '0');
+
+        const addRow = (section, tag, text) => {
+            const cells = splitTableRow(text);
+            const tr = section.insertRow();
+            align.forEach((a, i) => tr.append(buildTableCell(tag, cells[i] ?? '', a)));
+        };
+
+        addRow(table.createTHead(), 'th', rowTexts[0]);
+        if (rowTexts.length > 2) {
+            const body = table.createTBody();
+            rowTexts.slice(2).forEach(text => addRow(body, 'td', text));
+        }
+        return table;
+    }
+
+    // Splits a block's children at its <br>s. Pasted text arrives as one <p> per paragraph
+    // with a <br> per line, so a whole table usually sits inside one block.
+    function splitAtBreaks(block) {
+        const segments = [[]];
+        for (const node of Array.from(block.childNodes)) {
+            if (node.nodeName === 'BR') segments.push([]);
+            else segments[segments.length - 1].push(node);
+        }
+        return segments;
+    }
+
+    const segmentText = nodes => nodes.map(n => n.textContent).join('').replace(/ /g, ' ');
+
+    // Converts tables inside one <br>-separated block. The block is split around each table;
+    // the text before and after stays in blocks of the same type. Returns the remaining
+    // (non-table) blocks so inline rules can run on them, or [block] if there was no table.
+    function convertTablesInBlock(block) {
+        if (block.nodeType !== Node.ELEMENT_NODE || !PLAIN_LINE_TAGS.has(block.tagName)) return [block];
+        const segments = splitAtBreaks(block);
+        if (segments.length < 2) return [block];
+        const texts = segments.map(segmentText);
+        const tables = findTables(texts);
+        if (!tables.length) return [block];
+
+        const output = document.createDocumentFragment();
+        const remaining = [];
+        const flushText = (from, to) => {
+            const run = segments.slice(from, to);
+            // Drop blank lines at the edges, e.g. CKEditor's trailing filler <br>.
+            while (run.length && !segmentText(run[0]).trim()) run.shift();
+            while (run.length && !segmentText(run[run.length - 1]).trim()) run.pop();
+            if (!run.length) return;
+            const part = block.cloneNode(false);
+            run.forEach((nodes, i) => {
+                if (i) part.append(document.createElement('br'));
+                part.append(...nodes);
+            });
+            output.append(part);
+            remaining.push(part);
+        };
+
+        let next = 0;
+        for (const { start, end, align } of tables) {
+            flushText(next, start);
+            output.append(buildTable(texts.slice(start, end + 1), align));
+            next = end + 1;
+        }
+        flushText(next, segments.length);
+        block.replaceWith(output);
+        return remaining;
+    }
+
+    // Text of a top-level line for table detection across lines, or '' when the line can't
+    // be a table row (headings, lists, code, or a block that contains line breaks itself).
+    function rowCandidateText(line) {
+        if (line.nodeType === Node.TEXT_NODE) return lineText(line);
+        if (!PLAIN_LINE_TAGS.has(line.tagName)) return '';
+        const brs = line.querySelectorAll('br');
+        if (brs.length > 1 || (brs.length === 1 && line.lastChild !== brs[0])) return '';
+        return lineText(line);
+    }
+
+    // ---------------------------------------------------------------------------------------
     // Editor tracking
     // ---------------------------------------------------------------------------------------
 
@@ -213,11 +358,26 @@
             block.forEach(line => dirty.delete(line));
         }
 
+        // Tables typed one row per line (Enter after each row).
+        const rows = Array.from(editor.childNodes);
+        const rowTexts = rows.map(line => (inCode.has(line) ? '' : rowCandidateText(line)));
+        for (const { start, end, align } of findTables(rowTexts)) {
+            const block = rows.slice(start, end + 1);
+            if (!block.some(line => dirty.has(line))) continue;
+            if (block.includes(caret)) continue;
+            block[0].replaceWith(buildTable(rowTexts.slice(start, end + 1), align));
+            block.slice(1).forEach(line => line.remove());
+            block.forEach(line => dirty.delete(line));
+        }
+
         for (const line of Array.from(dirty)) {
             if (line === caret || inCode.has(line)) continue;
             dirty.delete(line);
             if (line.nodeName === 'PRE') continue;
-            applyInlineRules(applyBlockRule(line));
+            // Pasted tables: several rows inside one block, separated by <br>.
+            for (const part of convertTablesInBlock(line)) {
+                applyInlineRules(applyBlockRule(part));
+            }
         }
 
         // Drop the mutation records caused by our own changes.
