@@ -75,8 +75,3 @@ Edge `update_url`. Icons are unchanged from the original.
 `test/harness-cke.html` mimics current IT Glue's editor markup (`div.alloy.cke_editable`);
 `test/harness.html` uses the older `.ae-editable` class. Serve this folder over HTTP
 (`python3 -m http.server 8765`) and open `http://localhost:8765/test/harness-cke.html`.
-
-## Licence
-
-The original add-on doesn't state a licence. This is a private patch for internal use; check with
-the original author before redistributing it publicly.
